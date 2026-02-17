@@ -3,6 +3,12 @@ import logging
 import ftfy
 import sys
 import json
+import mimetypes
+import shutil
+import tempfile
+import zipfile
+from pathlib import Path
+from typing import Optional
 
 from azure.identity import DefaultAzureCredential
 from langchain_community.document_loaders import (
@@ -28,6 +34,7 @@ from open_webui.retrieval.loaders.external_document import ExternalDocumentLoade
 from open_webui.retrieval.loaders.mistral import MistralLoader
 from open_webui.retrieval.loaders.datalab_marker import DatalabMarkerLoader
 from open_webui.retrieval.loaders.mineru import MinerULoader
+from open_webui.retrieval.loaders.archive import ZipArchiveLoader
 
 
 from open_webui.env import GLOBAL_LOG_LEVEL, REQUESTS_VERIFY
@@ -87,6 +94,114 @@ known_source_ext = [
     "lhs",
     "json",
 ]
+class ZipLoader:
+    """
+    Loads a .zip by extracting members to a temp folder and then delegating
+    to the existing Loader for each extracted file.
+
+    Safety controls:
+      - blocks path traversal (zip slip)
+      - limits file count and total uncompressed size
+      - skips nested zip files
+    """
+
+    def __init__(
+        self,
+        zip_path: str,
+        zip_name: str,
+        engine: str,
+        loader_kwargs: dict,
+        *,
+        max_files: int = 10_000_000,
+        max_total_bytes: int = 10_000_000_000_000,  # 10 TB
+        max_file_bytes: int = 10_000_000_000_000 # 10 TB
+
+    ):
+        self.zip_path = zip_path
+        self.zip_name = zip_name
+        self.engine = engine
+        self.loader_kwargs = loader_kwargs
+        self.max_files = max_files
+        self.max_total_bytes = max_total_bytes
+        self.max_file_bytes = max_file_bytes
+
+    def _is_safe_member(self, member_name: str) -> bool:
+        p = Path(member_name)
+
+        # block absolute paths and traversal
+        if p.is_absolute() or ".." in p.parts:
+            return False
+
+        # skip common junk
+        if p.name in {".DS_Store"}:
+            return False
+        if len(p.parts) > 0 and p.parts[0] == "__MACOSX":
+            return False
+
+        return True
+
+    def load(self) -> list[Document]:
+        docs: list[Document] = []
+        total = 0
+        extracted_files = 0
+
+        with zipfile.ZipFile(self.zip_path) as zf, tempfile.TemporaryDirectory(prefix="openwebui_zip_") as td:
+            for info in zf.infolist():
+                if info.is_dir():
+                    continue
+                if self.max_files is not None and extracted_files >= self.max_files:
+                    break
+
+                member = info.filename
+
+                if not self._is_safe_member(member):
+                    continue
+
+                # uncompressed size limits
+                if info.file_size <= 0:
+                    continue
+                if self.max_file_bytes is not None and info.file_size > self.max_file_bytes:
+                    continue
+                if self.max_total_bytes is not None and total + info.file_size > self.max_total_bytes:
+                    break
+
+                inner_path = Path(member)
+                inner_ext = inner_path.suffix.lower().lstrip(".")
+                if inner_ext == "zip":
+                    # Skip nested zips to avoid recursion / zip bombs
+                    continue
+
+                # extract safely to temp dir (preserving inner folders)
+                dest = Path(td) / inner_path
+                dest.parent.mkdir(parents=True, exist_ok=True)
+
+                with zf.open(info, "r") as src, open(dest, "wb") as out:
+                    shutil.copyfileobj(src, out)
+
+                total += info.file_size
+                extracted_files += 1
+
+                # guess mime type for better loader selection
+                mime, _ = mimetypes.guess_type(dest.name)
+                mime = mime or ""
+
+                # Delegate to existing Loader for real parsing (pdf/docx/etc)
+                inner_loader = Loader(engine=self.engine, **self.loader_kwargs)
+                inner_docs = inner_loader.load(dest.name, mime, str(dest))
+                # prevent temp dir from growing to the full uncompressed zip size
+                try:
+                    dest.unlink()
+                except Exception:
+                    pass
+                # Preserve the “path inside zip” in metadata (won’t break existing pipeline)
+                for d in inner_docs:
+                    d.metadata = dict(d.metadata or {})
+                    d.metadata["archive_name"] = self.zip_name
+                    d.metadata["archive_path"] = str(inner_path)
+                    docs.append(d)
+
+        # If zip was empty/ignored, return an empty list (caller can error or handle)
+        return docs
 
 
 class TikaLoader:
@@ -210,7 +325,22 @@ class Loader:
 
     def _get_loader(self, filename: str, file_content_type: str, file_path: str):
         file_ext = filename.split(".")[-1].lower()
-
+        # Archive support (.zip): extract members and delegate to existing loaders
+        if file_ext == "zip" or file_content_type in ["application/zip", "application/x-zip-compressed"]:
+            return ZipArchiveLoader(
+                file_path=file_path,
+                zip_filename=filename,
+                file_content_type=file_content_type,
+                get_loader=self._get_loader,
+            )
+        # ZIP support
+        if file_ext == "zip" or file_content_type in ("application/zip", "application/x-zip-compressed"):
+            return ZipLoader(
+                zip_path=file_path,
+                zip_name=filename,
+                engine=self.engine,
+                loader_kwargs=self.kwargs,
+            )
         if (
             self.engine == "external"
             and self.kwargs.get("EXTERNAL_DOCUMENT_LOADER_URL")
