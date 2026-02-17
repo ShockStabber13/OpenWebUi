@@ -2842,6 +2842,8 @@ async def non_streaming_chat_response_handler(response, ctx):
             if choices and choices[0].get("message", {}).get("content"):
                 content = response_data["choices"][0]["message"]["content"]
 
+                  sources = response_data.get("sources") or []
+
                 if content:
                     await event_emitter(
                         {
@@ -2873,6 +2875,7 @@ async def non_streaming_chat_response_handler(response, ctx):
                                 "done": True,
                                 "content": content,
                                 "output": response_output,
+                                "sources": sources,
                                 "title": title,
                             },
                         }
@@ -2886,6 +2889,7 @@ async def non_streaming_chat_response_handler(response, ctx):
                             "role": "assistant",
                             "content": content,
                             "output": response_output,
+                            "sources": sources,
                         },
                     )
 
