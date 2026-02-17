@@ -567,6 +567,7 @@
 			name: file.name,
 			collection_name: '',
 			status: 'uploading',
+							progress: 0,
 			size: file.size,
 			error: '',
 			itemId: tempItemId,
@@ -594,7 +595,12 @@
 				}
 
 				// During the file upload, file content is automatically extracted.
-				const uploadedFile = await uploadFile(localStorage.token, file, metadata, process);
+				const uploadedFile = await uploadFile(localStorage.token, file, metadata, process, (pct) => {
+							fileItem.progress = pct;
+							files = files; // trigger Svelte reactivity
+							console.log('upload %', pct, fileItem.name);
+
+					});
 
 				if (uploadedFile) {
 					console.log('File upload completed:', {
@@ -1261,26 +1267,35 @@
 												</div>
 											</div>
 										{:else}
-											<FileItem
-												item={file}
-												name={file.name}
-												type={file.type}
-												size={file?.size}
-												loading={file.status === 'uploading'}
-												dismissible={true}
-												edit={true}
-												small={true}
-												modal={['file', 'collection'].includes(file?.type)}
-												on:dismiss={async () => {
-													// Remove from UI state
-													files.splice(fileIdx, 1);
-													files = files;
-												}}
-												on:click={() => {
-													console.log(file);
-												}}
-											/>
-										{/if}
+  <div class="flex flex-col gap-1">
+    {#if file.status === 'uploading'}
+      <div class="flex items-center gap-2 px-1">
+        <progress max="100" value={file.progress ?? 0} class="w-32 h-2"></progress>
+        <span class="text-xs tabular-nums">{file.progress ?? 0}%</span>
+      </div>
+    {/if}
+
+    <FileItem
+      item={file}
+      name={file.name}
+      type={file.type}
+      size={file?.size}
+      loading={file.status === 'uploading'}
+      dismissible={true}
+      edit={true}
+      small={true}
+      modal={['file', 'collection'].includes(file?.type)}
+      on:dismiss={async () => {
+        files.splice(fileIdx, 1);
+        files = files;
+      }}
+      on:click={() => {
+        console.log(file);
+      }}
+    />
+  </div>
+{/if}
+
 									{/each}
 								</div>
 							{/if}

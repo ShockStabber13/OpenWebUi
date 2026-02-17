@@ -56,6 +56,8 @@
 	import Pagination from '$lib/components/common/Pagination.svelte';
 	import AttachWebpageModal from '$lib/components/chat/MessageInput/AttachWebpageModal.svelte';
 
+	let uploadPct = 0;
+
 	let largeScreen = true;
 
 	let pane;
@@ -224,7 +226,14 @@
 						res.content
 					);
 
-					const uploadedFile = await uploadFile(localStorage.token, file).catch((e) => {
+				uploadPct = 0;
+				const uploadedFile = await uploadFile(
+				  localStorage.token,
+				  file,
+				  undefined,
+				  undefined,
+				  (pct) => (uploadPct = pct)
+				).catch((e) => {
 						toast.error(`${e}`);
 						return null;
 					});
@@ -310,7 +319,15 @@
 					: {})
 			};
 
-			const uploadedFile = await uploadFile(localStorage.token, file, metadata).catch((e) => {
+			uploadPct = 0;
+			const uploadedFile = await uploadFile(
+			  localStorage.token,
+			  file,
+			  metadata,
+			  undefined,
+			  (pct) => (uploadPct = pct)
+			).catch((e) => {
+				
 				toast.error(`${e}`);
 				return null;
 			});
@@ -1021,6 +1038,7 @@
 											files={fileItems}
 											{knowledge}
 											{selectedFileId}
+											{uploadPct}
 											onClick={(fileId) => {
 												selectedFileId = fileId;
 

@@ -19,6 +19,7 @@
 	export let knowledge = null;
 	export let selectedFileId = null;
 	export let files = [];
+	export let uploadPct = 0;
 
 	export let onClick = (fileId) => {};
 	export let onDelete = (fileId) => {};
@@ -51,8 +52,8 @@
 
 						<div class="line-clamp-1 text-sm">
 							{file?.name ?? file?.meta?.name}
-							{#if file?.meta?.size}
-								<span class="text-xs text-gray-500">{formatFileSize(file?.meta?.size)}</span>
+							{#if uploadPct > 0}
+							  <span class="text-xs opacity-70 ml-2">{uploadPct}%</span>
 							{/if}
 						</div>
 					</div>

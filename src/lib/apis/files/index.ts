@@ -2,11 +2,13 @@ import { WEBUI_API_BASE_URL } from '$lib/constants';
 import { splitStream } from '$lib/utils';
 
 export const uploadFile = async (
-	token: string,
-	file: File,
-	metadata?: object | null,
-	process?: boolean | null
+  token: string,
+  file: File,
+  metadata?: object | null,
+  process?: boolean | null,
+  onProgress?: (pct: number) => void
 ) => {
+
 	const data = new FormData();
 	data.append('file', file);
 	if (metadata) {
@@ -20,23 +22,42 @@ export const uploadFile = async (
 
 	let error = null;
 
-	const res = await fetch(`${WEBUI_API_BASE_URL}/files/?${searchParams.toString()}`, {
-		method: 'POST',
-		headers: {
-			Accept: 'application/json',
-			authorization: `Bearer ${token}`
-		},
-		body: data
-	})
-		.then(async (res) => {
-			if (!res.ok) throw await res.json();
-			return res.json();
-		})
-		.catch((err) => {
-			error = err.detail || err.message;
-			console.error(err);
-			return null;
-		});
+	  const res = await new Promise<any>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${WEBUI_API_BASE_URL}/files/?${searchParams.toString()}`);
+
+    xhr.setRequestHeader('Accept', 'application/json');
+    xhr.setRequestHeader('authorization', `Bearer ${token}`);
+
+    xhr.upload.onprogress = (event) => {
+  const total = event.total || file.size; // fallback if lengthComputable is false
+  if (!total) return;
+
+  const pct = Math.round((event.loaded / total) * 100);
+  onProgress?.(pct);
+};
+
+
+    xhr.onload = () => {
+      try {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(JSON.parse(xhr.responseText));
+        } else {
+          reject(JSON.parse(xhr.responseText));
+        }
+      } catch (e) {
+        reject(e);
+      }
+    };
+
+    xhr.onerror = () => reject(new Error('Upload failed (network error)'));
+    xhr.send(data);
+  }).catch((err) => {
+    error = err.detail || err.message || err;
+    console.error(err);
+    return null;
+  });
+
 
 	if (error) {
 		throw error;

@@ -1654,6 +1654,1227 @@ def process_file(
         file = Files.get_file_by_id_and_user_id(form_data.file_id, user.id, db=db)
 
     if file:
+
+
+
+
+
+
+
+
+        # --- PATCH: ZIP uploads -> build manifest + extract safe text, so processing completes and AI can see contents
+
+        content_type = (file.meta or {}).get("content_type") or ""
+
+        is_zip = (
+
+            content_type in ("application/zip", "application/x-zip-compressed")
+
+            or content_type.endswith("/zip")
+
+            or (file.filename or "").lower().endswith(".zip")
+
+        )
+
+        if is_zip and not getattr(form_data, "content", None):
+
+            import zipfile
+
+
+            # Resolve on-disk path the same way the normal loader path does
+
+            zpath = getattr(file, "path", None)
+
+            if zpath:
+
+                # Storage is already imported/used in this module later
+
+                zpath = Storage.get_file(zpath)
+
+
+            manifest = []
+
+            extracted = []
+
+
+            MAX_FILES = 500                 # avoid huge zips blowing up the request
+
+            MAX_FILE_BYTES = 256_000        # max bytes per extracted text file
+
+            MAX_TOTAL_BYTES = 1_000_000     # total bytes extracted across all files
+
+            total = 0
+
+
+            # Only extract clearly-text formats; binaries like .so will be listed in the manifest only
+
+            ALLOWED_EXTS = {
+
+                "txt","md","rst","log","csv","tsv","json","jsonl","yaml","yml","toml","ini",
+
+                "py","js","ts","tsx","jsx","java","kt","go","rs","c","cc","cpp","h","hpp",
+
+                "html","css","xml","sql","sh","ps1","bat","svelte"
+
+            }
+
+
+            if not zpath:
+
+                zip_content = (
+
+                    "# ZIP archive\n\n"
+
+                    "I received a ZIP file, but the server doesn't have a stored file path for it, "
+
+                    "so I can't enumerate/extract its contents.\n"
+
+                )
+
+            else:
+
+                try:
+
+                    with zipfile.ZipFile(zpath) as zf:
+
+                        infos = zf.infolist()
+
+                        for idx, info in enumerate(infos):
+
+                            if idx >= MAX_FILES:
+
+                                remaining = max(0, len(infos) - MAX_FILES)
+
+                                manifest.append(f"- … ({remaining} more entries omitted)")
+
+                                break
+
+                            if getattr(info, "is_dir", lambda: info.filename.endswith("/"))():
+
+                                continue
+
+
+                            name = info.filename
+
+                            size = getattr(info, "file_size", None)
+
+                            manifest.append(f"- `{name}` ({size} bytes)")
+
+
+                            ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+
+                            if ext in ALLOWED_EXTS and size is not None and size <= MAX_FILE_BYTES and total < MAX_TOTAL_BYTES:
+
+                                with zf.open(info) as fh:
+
+                                    raw = fh.read(MAX_FILE_BYTES)
+
+                                total += len(raw)
+
+                                t = raw.decode("utf-8", errors="replace")
+
+                                if len(t) > 8000:
+
+                                    t = t[:8000] + "\n…[truncated]…"
+
+                                extracted.append(f"\n\n### {name}\n\n```text\n{t}\n```")
+
+                except Exception as e:
+
+                    manifest.append(f"- (error reading zip: {e})")
+
+
+                zip_content = "# ZIP archive\n\n## Manifest\n" + "\n".join(manifest)
+
+                if extracted:
+
+                    zip_content += "\n\n## Extracted text (safe subset)\n" + "".join(extracted)
+
+
+            # Feed the existing `form_data.content` pipeline (no loader), so:
+
+            # - status reaches completed
+
+            # - embeddings/retrieval use this generated content
+
+            form_data.content = zip_content
+
+            form_data.collection_name = None
+
+        # --- END PATCH
+        # --- PATCH: ZIP uploads -> build manifest + extract safe text, so processing completes and AI can see contents
+
+        content_type = (file.meta or {}).get("content_type") or ""
+
+        is_zip = (
+
+            content_type in ("application/zip", "application/x-zip-compressed")
+
+            or content_type.endswith("/zip")
+
+            or (file.filename or "").lower().endswith(".zip")
+
+        )
+
+        if is_zip and not getattr(form_data, "content", None):
+
+            import zipfile
+
+
+            # Resolve on-disk path the same way the normal loader path does
+
+            zpath = getattr(file, "path", None)
+
+            if zpath:
+
+                # Storage is already imported/used in this module later
+
+                zpath = Storage.get_file(zpath)
+
+
+            manifest = []
+
+            extracted = []
+
+
+            MAX_FILES = 500                 # avoid huge zips blowing up the request
+
+            MAX_FILE_BYTES = 256_000        # max bytes per extracted text file
+
+            MAX_TOTAL_BYTES = 1_000_000     # total bytes extracted across all files
+
+            total = 0
+
+
+            # Only extract clearly-text formats; binaries like .so will be listed in the manifest only
+
+            ALLOWED_EXTS = {
+
+                "txt","md","rst","log","csv","tsv","json","jsonl","yaml","yml","toml","ini",
+
+                "py","js","ts","tsx","jsx","java","kt","go","rs","c","cc","cpp","h","hpp",
+
+                "html","css","xml","sql","sh","ps1","bat","svelte"
+
+            }
+
+
+            if not zpath:
+
+                zip_content = (
+
+                    "# ZIP archive\n\n"
+
+                    "I received a ZIP file, but the server doesn't have a stored file path for it, "
+
+                    "so I can't enumerate/extract its contents.\n"
+
+                )
+
+            else:
+
+                try:
+
+                    with zipfile.ZipFile(zpath) as zf:
+
+                        infos = zf.infolist()
+
+                        for idx, info in enumerate(infos):
+
+                            if idx >= MAX_FILES:
+
+                                remaining = max(0, len(infos) - MAX_FILES)
+
+                                manifest.append(f"- … ({remaining} more entries omitted)")
+
+                                break
+
+                            if getattr(info, "is_dir", lambda: info.filename.endswith("/"))():
+
+                                continue
+
+
+                            name = info.filename
+
+                            size = getattr(info, "file_size", None)
+
+                            manifest.append(f"- `{name}` ({size} bytes)")
+
+
+                            ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+
+                            if ext in ALLOWED_EXTS and size is not None and size <= MAX_FILE_BYTES and total < MAX_TOTAL_BYTES:
+
+                                with zf.open(info) as fh:
+
+                                    raw = fh.read(MAX_FILE_BYTES)
+
+                                total += len(raw)
+
+                                t = raw.decode("utf-8", errors="replace")
+
+                                if len(t) > 8000:
+
+                                    t = t[:8000] + "\n…[truncated]…"
+
+                                extracted.append(f"\n\n### {name}\n\n```text\n{t}\n```")
+
+                except Exception as e:
+
+                    manifest.append(f"- (error reading zip: {e})")
+
+
+                zip_content = "# ZIP archive\n\n## Manifest\n" + "\n".join(manifest)
+
+                if extracted:
+
+                    zip_content += "\n\n## Extracted text (safe subset)\n" + "".join(extracted)
+
+
+            # Feed the existing `form_data.content` pipeline (no loader), so:
+
+            # - status reaches completed
+
+            # - embeddings/retrieval use this generated content
+
+            form_data.content = zip_content
+
+            form_data.collection_name = None
+
+        # --- END PATCH
+        # --- PATCH: ZIP uploads -> build manifest + extract safe text, so processing completes and AI can see contents
+
+        content_type = (file.meta or {}).get("content_type") or ""
+
+        is_zip = (
+
+            content_type in ("application/zip", "application/x-zip-compressed")
+
+            or content_type.endswith("/zip")
+
+            or (file.filename or "").lower().endswith(".zip")
+
+        )
+
+        if is_zip and not getattr(form_data, "content", None):
+
+            import zipfile
+
+
+            # Resolve on-disk path the same way the normal loader path does
+
+            zpath = getattr(file, "path", None)
+
+            if zpath:
+
+                # Storage is already imported/used in this module later
+
+                zpath = Storage.get_file(zpath)
+
+
+            manifest = []
+
+            extracted = []
+
+
+            MAX_FILES = 500                 # avoid huge zips blowing up the request
+
+            MAX_FILE_BYTES = 256_000        # max bytes per extracted text file
+
+            MAX_TOTAL_BYTES = 1_000_000     # total bytes extracted across all files
+
+            total = 0
+
+
+            # Only extract clearly-text formats; binaries like .so will be listed in the manifest only
+
+            ALLOWED_EXTS = {
+
+                "txt","md","rst","log","csv","tsv","json","jsonl","yaml","yml","toml","ini",
+
+                "py","js","ts","tsx","jsx","java","kt","go","rs","c","cc","cpp","h","hpp",
+
+                "html","css","xml","sql","sh","ps1","bat","svelte"
+
+            }
+
+
+            if not zpath:
+
+                zip_content = (
+
+                    "# ZIP archive\n\n"
+
+                    "I received a ZIP file, but the server doesn't have a stored file path for it, "
+
+                    "so I can't enumerate/extract its contents.\n"
+
+                )
+
+            else:
+
+                try:
+
+                    with zipfile.ZipFile(zpath) as zf:
+
+                        infos = zf.infolist()
+
+                        for idx, info in enumerate(infos):
+
+                            if idx >= MAX_FILES:
+
+                                remaining = max(0, len(infos) - MAX_FILES)
+
+                                manifest.append(f"- … ({remaining} more entries omitted)")
+
+                                break
+
+                            if getattr(info, "is_dir", lambda: info.filename.endswith("/"))():
+
+                                continue
+
+
+                            name = info.filename
+
+                            size = getattr(info, "file_size", None)
+
+                            manifest.append(f"- `{name}` ({size} bytes)")
+
+
+                            ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+
+                            if ext in ALLOWED_EXTS and size is not None and size <= MAX_FILE_BYTES and total < MAX_TOTAL_BYTES:
+
+                                with zf.open(info) as fh:
+
+                                    raw = fh.read(MAX_FILE_BYTES)
+
+                                total += len(raw)
+
+                                t = raw.decode("utf-8", errors="replace")
+
+                                if len(t) > 8000:
+
+                                    t = t[:8000] + "\n…[truncated]…"
+
+                                extracted.append(f"\n\n### {name}\n\n```text\n{t}\n```")
+
+                except Exception as e:
+
+                    manifest.append(f"- (error reading zip: {e})")
+
+
+                zip_content = "# ZIP archive\n\n## Manifest\n" + "\n".join(manifest)
+
+                if extracted:
+
+                    zip_content += "\n\n## Extracted text (safe subset)\n" + "".join(extracted)
+
+
+            # Feed the existing `form_data.content` pipeline (no loader), so:
+
+            # - status reaches completed
+
+            # - embeddings/retrieval use this generated content
+
+            form_data.content = zip_content
+
+            form_data.collection_name = None
+
+        # --- END PATCH
+        # --- PATCH: ZIP uploads -> build manifest + extract safe text, so processing completes and AI can see contents
+
+        content_type = (file.meta or {}).get("content_type") or ""
+
+        is_zip = (
+
+            content_type in ("application/zip", "application/x-zip-compressed")
+
+            or content_type.endswith("/zip")
+
+            or (file.filename or "").lower().endswith(".zip")
+
+        )
+
+        if is_zip and not getattr(form_data, "content", None):
+
+            import zipfile
+
+
+            # Resolve on-disk path the same way the normal loader path does
+
+            zpath = getattr(file, "path", None)
+
+            if zpath:
+
+                # Storage is already imported/used in this module later
+
+                zpath = Storage.get_file(zpath)
+
+
+            manifest = []
+
+            extracted = []
+
+
+            MAX_FILES = 500                 # avoid huge zips blowing up the request
+
+            MAX_FILE_BYTES = 256_000        # max bytes per extracted text file
+
+            MAX_TOTAL_BYTES = 1_000_000     # total bytes extracted across all files
+
+            total = 0
+
+
+            # Only extract clearly-text formats; binaries like .so will be listed in the manifest only
+
+            ALLOWED_EXTS = {
+
+                "txt","md","rst","log","csv","tsv","json","jsonl","yaml","yml","toml","ini",
+
+                "py","js","ts","tsx","jsx","java","kt","go","rs","c","cc","cpp","h","hpp",
+
+                "html","css","xml","sql","sh","ps1","bat","svelte"
+
+            }
+
+
+            if not zpath:
+
+                zip_content = (
+
+                    "# ZIP archive\n\n"
+
+                    "I received a ZIP file, but the server doesn't have a stored file path for it, "
+
+                    "so I can't enumerate/extract its contents.\n"
+
+                )
+
+            else:
+
+                try:
+
+                    with zipfile.ZipFile(zpath) as zf:
+
+                        infos = zf.infolist()
+
+                        for idx, info in enumerate(infos):
+
+                            if idx >= MAX_FILES:
+
+                                remaining = max(0, len(infos) - MAX_FILES)
+
+                                manifest.append(f"- … ({remaining} more entries omitted)")
+
+                                break
+
+                            if getattr(info, "is_dir", lambda: info.filename.endswith("/"))():
+
+                                continue
+
+
+                            name = info.filename
+
+                            size = getattr(info, "file_size", None)
+
+                            manifest.append(f"- `{name}` ({size} bytes)")
+
+
+                            ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+
+                            if ext in ALLOWED_EXTS and size is not None and size <= MAX_FILE_BYTES and total < MAX_TOTAL_BYTES:
+
+                                with zf.open(info) as fh:
+
+                                    raw = fh.read(MAX_FILE_BYTES)
+
+                                total += len(raw)
+
+                                t = raw.decode("utf-8", errors="replace")
+
+                                if len(t) > 8000:
+
+                                    t = t[:8000] + "\n…[truncated]…"
+
+                                extracted.append(f"\n\n### {name}\n\n```text\n{t}\n```")
+
+                except Exception as e:
+
+                    manifest.append(f"- (error reading zip: {e})")
+
+
+                zip_content = "# ZIP archive\n\n## Manifest\n" + "\n".join(manifest)
+
+                if extracted:
+
+                    zip_content += "\n\n## Extracted text (safe subset)\n" + "".join(extracted)
+
+
+            # Feed the existing `form_data.content` pipeline (no loader), so:
+
+            # - status reaches completed
+
+            # - embeddings/retrieval use this generated content
+
+            form_data.content = zip_content
+
+            form_data.collection_name = None
+
+        # --- END PATCH
+        # --- PATCH: ZIP uploads -> build manifest + extract safe text, so processing completes and AI can see contents
+
+        content_type = (file.meta or {}).get("content_type") or ""
+
+        is_zip = (
+
+            content_type in ("application/zip", "application/x-zip-compressed")
+
+            or content_type.endswith("/zip")
+
+            or (file.filename or "").lower().endswith(".zip")
+
+        )
+
+        if is_zip and not getattr(form_data, "content", None):
+
+            import zipfile
+
+
+            # Resolve on-disk path the same way the normal loader path does
+
+            zpath = getattr(file, "path", None)
+
+            if zpath:
+
+                # Storage is already imported/used in this module later
+
+                zpath = Storage.get_file(zpath)
+
+
+            manifest = []
+
+            extracted = []
+
+
+            MAX_FILES = 500                 # avoid huge zips blowing up the request
+
+            MAX_FILE_BYTES = 256_000        # max bytes per extracted text file
+
+            MAX_TOTAL_BYTES = 1_000_000     # total bytes extracted across all files
+
+            total = 0
+
+
+            # Only extract clearly-text formats; binaries like .so will be listed in the manifest only
+
+            ALLOWED_EXTS = {
+
+                "txt","md","rst","log","csv","tsv","json","jsonl","yaml","yml","toml","ini",
+
+                "py","js","ts","tsx","jsx","java","kt","go","rs","c","cc","cpp","h","hpp",
+
+                "html","css","xml","sql","sh","ps1","bat","svelte"
+
+            }
+
+
+            if not zpath:
+
+                zip_content = (
+
+                    "# ZIP archive\n\n"
+
+                    "I received a ZIP file, but the server doesn't have a stored file path for it, "
+
+                    "so I can't enumerate/extract its contents.\n"
+
+                )
+
+            else:
+
+                try:
+
+                    with zipfile.ZipFile(zpath) as zf:
+
+                        infos = zf.infolist()
+
+                        for idx, info in enumerate(infos):
+
+                            if idx >= MAX_FILES:
+
+                                remaining = max(0, len(infos) - MAX_FILES)
+
+                                manifest.append(f"- … ({remaining} more entries omitted)")
+
+                                break
+
+                            if getattr(info, "is_dir", lambda: info.filename.endswith("/"))():
+
+                                continue
+
+
+                            name = info.filename
+
+                            size = getattr(info, "file_size", None)
+
+                            manifest.append(f"- `{name}` ({size} bytes)")
+
+
+                            ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+
+                            if ext in ALLOWED_EXTS and size is not None and size <= MAX_FILE_BYTES and total < MAX_TOTAL_BYTES:
+
+                                with zf.open(info) as fh:
+
+                                    raw = fh.read(MAX_FILE_BYTES)
+
+                                total += len(raw)
+
+                                t = raw.decode("utf-8", errors="replace")
+
+                                if len(t) > 8000:
+
+                                    t = t[:8000] + "\n…[truncated]…"
+
+                                extracted.append(f"\n\n### {name}\n\n```text\n{t}\n```")
+
+                except Exception as e:
+
+                    manifest.append(f"- (error reading zip: {e})")
+
+
+                zip_content = "# ZIP archive\n\n## Manifest\n" + "\n".join(manifest)
+
+                if extracted:
+
+                    zip_content += "\n\n## Extracted text (safe subset)\n" + "".join(extracted)
+
+
+            # Feed the existing `form_data.content` pipeline (no loader), so:
+
+            # - status reaches completed
+
+            # - embeddings/retrieval use this generated content
+
+            form_data.content = zip_content
+
+            form_data.collection_name = None
+
+        # --- END PATCH
+        # --- PATCH: ZIP uploads -> build manifest + extract safe text, so processing completes and AI can see contents
+
+        content_type = (file.meta or {}).get("content_type") or ""
+
+        is_zip = (
+
+            content_type in ("application/zip", "application/x-zip-compressed")
+
+            or content_type.endswith("/zip")
+
+            or (file.filename or "").lower().endswith(".zip")
+
+        )
+
+        if is_zip and not getattr(form_data, "content", None):
+
+            import zipfile
+
+
+            # Resolve on-disk path the same way the normal loader path does
+
+            zpath = getattr(file, "path", None)
+
+            if zpath:
+
+                # Storage is already imported/used in this module later
+
+                zpath = Storage.get_file(zpath)
+
+
+            manifest = []
+
+            extracted = []
+
+
+            MAX_FILES = 500                 # avoid huge zips blowing up the request
+
+            MAX_FILE_BYTES = 256_000        # max bytes per extracted text file
+
+            MAX_TOTAL_BYTES = 1_000_000     # total bytes extracted across all files
+
+            total = 0
+
+
+            # Only extract clearly-text formats; binaries like .so will be listed in the manifest only
+
+            ALLOWED_EXTS = {
+
+                "txt","md","rst","log","csv","tsv","json","jsonl","yaml","yml","toml","ini",
+
+                "py","js","ts","tsx","jsx","java","kt","go","rs","c","cc","cpp","h","hpp",
+
+                "html","css","xml","sql","sh","ps1","bat","svelte"
+
+            }
+
+
+            if not zpath:
+
+                zip_content = (
+
+                    "# ZIP archive\n\n"
+
+                    "I received a ZIP file, but the server doesn't have a stored file path for it, "
+
+                    "so I can't enumerate/extract its contents.\n"
+
+                )
+
+            else:
+
+                try:
+
+                    with zipfile.ZipFile(zpath) as zf:
+
+                        infos = zf.infolist()
+
+                        for idx, info in enumerate(infos):
+
+                            if idx >= MAX_FILES:
+
+                                remaining = max(0, len(infos) - MAX_FILES)
+
+                                manifest.append(f"- … ({remaining} more entries omitted)")
+
+                                break
+
+                            if getattr(info, "is_dir", lambda: info.filename.endswith("/"))():
+
+                                continue
+
+
+                            name = info.filename
+
+                            size = getattr(info, "file_size", None)
+
+                            manifest.append(f"- `{name}` ({size} bytes)")
+
+
+                            ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+
+                            if ext in ALLOWED_EXTS and size is not None and size <= MAX_FILE_BYTES and total < MAX_TOTAL_BYTES:
+
+                                with zf.open(info) as fh:
+
+                                    raw = fh.read(MAX_FILE_BYTES)
+
+                                total += len(raw)
+
+                                t = raw.decode("utf-8", errors="replace")
+
+                                if len(t) > 8000:
+
+                                    t = t[:8000] + "\n…[truncated]…"
+
+                                extracted.append(f"\n\n### {name}\n\n```text\n{t}\n```")
+
+                except Exception as e:
+
+                    manifest.append(f"- (error reading zip: {e})")
+
+
+                zip_content = "# ZIP archive\n\n## Manifest\n" + "\n".join(manifest)
+
+                if extracted:
+
+                    zip_content += "\n\n## Extracted text (safe subset)\n" + "".join(extracted)
+
+
+            # Feed the existing `form_data.content` pipeline (no loader), so:
+
+            # - status reaches completed
+
+            # - embeddings/retrieval use this generated content
+
+            form_data.content = zip_content
+
+            form_data.collection_name = None
+
+        # --- END PATCH
+        # --- PATCH: ZIP uploads -> build manifest + extract safe text, so processing completes and AI can see contents
+
+        content_type = (file.meta or {}).get("content_type") or ""
+
+        is_zip = (
+
+            content_type in ("application/zip", "application/x-zip-compressed")
+
+            or content_type.endswith("/zip")
+
+            or (file.filename or "").lower().endswith(".zip")
+
+        )
+
+        if is_zip and not getattr(form_data, "content", None):
+
+            import zipfile
+
+
+            # Resolve on-disk path the same way the normal loader path does
+
+            zpath = getattr(file, "path", None)
+
+            if zpath:
+
+                # Storage is already imported/used in this module later
+
+                zpath = Storage.get_file(zpath)
+
+
+            manifest = []
+
+            extracted = []
+
+
+            MAX_FILES = 500                 # avoid huge zips blowing up the request
+
+            MAX_FILE_BYTES = 256_000        # max bytes per extracted text file
+
+            MAX_TOTAL_BYTES = 1_000_000     # total bytes extracted across all files
+
+            total = 0
+
+
+            # Only extract clearly-text formats; binaries like .so will be listed in the manifest only
+
+            ALLOWED_EXTS = {
+
+                "txt","md","rst","log","csv","tsv","json","jsonl","yaml","yml","toml","ini",
+
+                "py","js","ts","tsx","jsx","java","kt","go","rs","c","cc","cpp","h","hpp",
+
+                "html","css","xml","sql","sh","ps1","bat","svelte"
+
+            }
+
+
+            if not zpath:
+
+                zip_content = (
+
+                    "# ZIP archive\n\n"
+
+                    "I received a ZIP file, but the server doesn't have a stored file path for it, "
+
+                    "so I can't enumerate/extract its contents.\n"
+
+                )
+
+            else:
+
+                try:
+
+                    with zipfile.ZipFile(zpath) as zf:
+
+                        infos = zf.infolist()
+
+                        for idx, info in enumerate(infos):
+
+                            if idx >= MAX_FILES:
+
+                                remaining = max(0, len(infos) - MAX_FILES)
+
+                                manifest.append(f"- … ({remaining} more entries omitted)")
+
+                                break
+
+                            if getattr(info, "is_dir", lambda: info.filename.endswith("/"))():
+
+                                continue
+
+
+                            name = info.filename
+
+                            size = getattr(info, "file_size", None)
+
+                            manifest.append(f"- `{name}` ({size} bytes)")
+
+
+                            ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+
+                            if ext in ALLOWED_EXTS and size is not None and size <= MAX_FILE_BYTES and total < MAX_TOTAL_BYTES:
+
+                                with zf.open(info) as fh:
+
+                                    raw = fh.read(MAX_FILE_BYTES)
+
+                                total += len(raw)
+
+                                t = raw.decode("utf-8", errors="replace")
+
+                                if len(t) > 8000:
+
+                                    t = t[:8000] + "\n…[truncated]…"
+
+                                extracted.append(f"\n\n### {name}\n\n```text\n{t}\n```")
+
+                except Exception as e:
+
+                    manifest.append(f"- (error reading zip: {e})")
+
+
+                zip_content = "# ZIP archive\n\n## Manifest\n" + "\n".join(manifest)
+
+                if extracted:
+
+                    zip_content += "\n\n## Extracted text (safe subset)\n" + "".join(extracted)
+
+
+            # Feed the existing `form_data.content` pipeline (no loader), so:
+
+            # - status reaches completed
+
+            # - embeddings/retrieval use this generated content
+
+            form_data.content = zip_content
+
+            form_data.collection_name = None
+
+        # --- END PATCH
+        # --- PATCH: ZIP uploads -> build manifest + extract safe text, so processing completes and AI can see contents
+
+        content_type = (file.meta or {}).get("content_type") or ""
+
+        is_zip = (
+
+            content_type in ("application/zip", "application/x-zip-compressed")
+
+            or content_type.endswith("/zip")
+
+            or (file.filename or "").lower().endswith(".zip")
+
+        )
+
+        if is_zip and not getattr(form_data, "content", None):
+
+            import zipfile
+
+
+            # Resolve on-disk path the same way the normal loader path does
+
+            zpath = getattr(file, "path", None)
+
+            if zpath:
+
+                # Storage is already imported/used in this module later
+
+                zpath = Storage.get_file(zpath)
+
+
+            manifest = []
+
+            extracted = []
+
+
+            MAX_FILES = 500                 # avoid huge zips blowing up the request
+
+            MAX_FILE_BYTES = 256_000        # max bytes per extracted text file
+
+            MAX_TOTAL_BYTES = 1_000_000     # total bytes extracted across all files
+
+            total = 0
+
+
+            # Only extract clearly-text formats; binaries like .so will be listed in the manifest only
+
+            ALLOWED_EXTS = {
+
+                "txt","md","rst","log","csv","tsv","json","jsonl","yaml","yml","toml","ini",
+
+                "py","js","ts","tsx","jsx","java","kt","go","rs","c","cc","cpp","h","hpp",
+
+                "html","css","xml","sql","sh","ps1","bat","svelte"
+
+            }
+
+
+            if not zpath:
+
+                zip_content = (
+
+                    "# ZIP archive\n\n"
+
+                    "I received a ZIP file, but the server doesn't have a stored file path for it, "
+
+                    "so I can't enumerate/extract its contents.\n"
+
+                )
+
+            else:
+
+                try:
+
+                    with zipfile.ZipFile(zpath) as zf:
+
+                        infos = zf.infolist()
+
+                        for idx, info in enumerate(infos):
+
+                            if idx >= MAX_FILES:
+
+                                remaining = max(0, len(infos) - MAX_FILES)
+
+                                manifest.append(f"- … ({remaining} more entries omitted)")
+
+                                break
+
+                            if getattr(info, "is_dir", lambda: info.filename.endswith("/"))():
+
+                                continue
+
+
+                            name = info.filename
+
+                            size = getattr(info, "file_size", None)
+
+                            manifest.append(f"- `{name}` ({size} bytes)")
+
+
+                            ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+
+                            if ext in ALLOWED_EXTS and size is not None and size <= MAX_FILE_BYTES and total < MAX_TOTAL_BYTES:
+
+                                with zf.open(info) as fh:
+
+                                    raw = fh.read(MAX_FILE_BYTES)
+
+                                total += len(raw)
+
+                                t = raw.decode("utf-8", errors="replace")
+
+                                if len(t) > 8000:
+
+                                    t = t[:8000] + "\n…[truncated]…"
+
+                                extracted.append(f"\n\n### {name}\n\n```text\n{t}\n```")
+
+                except Exception as e:
+
+                    manifest.append(f"- (error reading zip: {e})")
+
+
+                zip_content = "# ZIP archive\n\n## Manifest\n" + "\n".join(manifest)
+
+                if extracted:
+
+                    zip_content += "\n\n## Extracted text (safe subset)\n" + "".join(extracted)
+
+
+            # Feed the existing `form_data.content` pipeline (no loader), so:
+
+            # - status reaches completed
+
+            # - embeddings/retrieval use this generated content
+
+            form_data.content = zip_content
+
+            form_data.collection_name = None
+
+        # --- END PATCH
+                # --- PATCH: ZIP archive extraction (so AI can read it, and processing completes)
+        content_type = (file.meta or {}).get("content_type") or getattr(file, "content_type", "") or ""
+        if content_type in ("application/zip", "application/x-zip-compressed") or content_type.endswith("/zip"):
+            import zipfile
+            from pathlib import Path as _Path
+
+            # Try hard to resolve the on-disk path for the uploaded ZIP
+            file_path = None
+            try:
+                file_path = (file.meta or {}).get("path") or (file.meta or {}).get("file_path")
+            except Exception:
+                file_path = None
+
+            for attr in ("path", "file_path", "filepath", "location"):
+                if not file_path and hasattr(file, attr):
+                    try:
+                        file_path = getattr(file, attr)
+                    except Exception:
+                        pass
+
+            if not file_path:
+                try:
+                    file_path = Files.get_file_path_by_id(file.id, db=db)
+                except Exception:
+                    file_path = None
+
+            if not file_path:
+                text_content = f"[ZIP] {file.filename} uploaded, but server couldn't resolve a file path to extract it."
+                Files.update_file_data_by_id(file.id, {"content": text_content, "status": "completed"}, db=db)
+                Files.update_file_hash_by_id(file.id, calculate_sha256_string(text_content), db=db)
+                return {"status": True, "collection_name": None, "filename": file.filename, "content": text_content}
+
+            p = _Path(str(file_path))
+            try:
+                with zipfile.ZipFile(p, "r") as zf:
+                    entries = [zi for zi in zf.infolist() if not zi.is_dir()]
+
+                    # Build a manifest + extract text from safe, small, text-like files
+                    lines = [f"[ZIP] {file.filename} contains {len(entries)} file(s):"]
+                    for zi in entries:
+                        lines.append(f"- {zi.filename} ({zi.file_size} bytes)")
+
+                    lines.append("")
+                    allowed_ext = {
+                        ".txt", ".md", ".json", ".yaml", ".yml", ".csv", ".ts", ".js", ".py",
+                        ".html", ".css", ".toml", ".ini", ".log", ".xml"
+                    }
+
+                    total_chars = 0
+                    MAX_TOTAL_CHARS = 200_000      # cap total extracted text stored
+                    MAX_FILE_CHARS  = 40_000       # cap per-file extracted text
+                    MAX_FILE_BYTES  = 2 * 1024 * 1024  # skip big members
+
+                    for zi in entries:
+                        name = zi.filename
+                        ext = _Path(name).suffix.lower()
+
+                        if ext not in allowed_ext:
+                            continue
+                        if zi.file_size > MAX_FILE_BYTES:
+                            continue
+
+                        try:
+                            raw = zf.read(zi)
+                        except Exception:
+                            continue
+
+                        try:
+                            txt = raw.decode("utf-8", errors="replace")
+                        except Exception:
+                            txt = raw.decode("latin-1", errors="replace")
+
+                        if len(txt) > MAX_FILE_CHARS:
+                            txt = txt[:MAX_FILE_CHARS] + "\n...[truncated]..."
+
+                        if total_chars + len(txt) > MAX_TOTAL_CHARS:
+                            lines.append("\n...[overall ZIP text truncated]...")
+                            break
+
+                        total_chars += len(txt)
+                        lines.append(f"\n--- {name} ---\n{txt}")
+
+                text_content = "\n".join(lines)
+                Files.update_file_data_by_id(file.id, {"content": text_content, "status": "completed"}, db=db)
+                Files.update_file_hash_by_id(file.id, calculate_sha256_string(text_content), db=db)
+                return {"status": True, "collection_name": None, "filename": file.filename, "content": text_content}
+
+            except zipfile.BadZipFile:
+                text_content = "[ZIP] Uploaded file is not a valid ZIP archive."
+                Files.update_file_data_by_id(file.id, {"content": text_content, "status": "completed"}, db=db)
+                Files.update_file_hash_by_id(file.id, calculate_sha256_string(text_content), db=db)
+                return {"status": True, "collection_name": None, "filename": file.filename, "content": text_content}
+        # --- END PATCH
         try:
 
             collection_name = form_data.collection_name
@@ -1725,6 +2946,107 @@ def process_file(
                 file_path = file.path
                 if file_path:
                     file_path = Storage.get_file(file_path)
+                    # --- PATCH: zip extraction (index .zip contents so chat can use them)
+                    import zipfile
+                    from pathlib import Path
+
+                    def _zip_to_text(zip_path: str) -> str:
+                        # Safety limits (avoid zip bombs / huge contexts)
+                        MAX_FILES = 200
+                        MAX_TOTAL_UNCOMPRESSED = 8 * 1024 * 1024   # 8 MiB
+                        MAX_SINGLE_FILE = 512 * 1024              # 512 KiB
+
+                        ALLOW_EXT = {
+                            ".txt",".md",".markdown",".json",".yaml",".yml",".toml",".ini",".cfg",".conf",
+                            ".py",".js",".ts",".tsx",".jsx",".java",".kt",".go",".rs",".c",".cc",".cpp",".h",".hpp",
+                            ".cs",".swift",".m",".mm",".html",".htm",".css",".scss",".sql",".sh",".bat",".ps1",
+                            ".xml",".csv"
+                        }
+
+                        out = []
+                        total = 0
+
+                        with zipfile.ZipFile(zip_path) as z:
+                            infos = [i for i in z.infolist() if not i.is_dir()]
+                            infos.sort(key=lambda i: i.filename)
+
+                            if len(infos) > MAX_FILES:
+                                out.append(f"[zip] too many entries: {len(infos)} (showing first {MAX_FILES})")
+                                infos = infos[:MAX_FILES]
+
+                            out.append("[zip] archive contents:")
+                            for i in infos:
+                                out.append(f"- {i.filename} ({i.file_size} bytes)")
+                            out.append("")
+
+                            for i in infos:
+                                if total >= MAX_TOTAL_UNCOMPRESSED:
+                                    out.append(f"[zip] stopped: reached {MAX_TOTAL_UNCOMPRESSED} bytes budget")
+                                    break
+
+                                ext = (Path(i.filename).suffix or "").lower()
+
+                                # Only ingest text-like files; still listed above for visibility
+                                if ext not in ALLOW_EXT:
+                                    continue
+
+                                if i.file_size > MAX_SINGLE_FILE:
+                                    out.append(f"--- {i.filename} (skipped: {i.file_size} > {MAX_SINGLE_FILE}) ---")
+                                    out.append("")
+                                    continue
+
+                                with z.open(i) as f:
+                                    data = f.read(MAX_SINGLE_FILE + 1)
+
+                                if len(data) > MAX_SINGLE_FILE:
+                                    out.append(f"--- {i.filename} (skipped: > {MAX_SINGLE_FILE}) ---")
+                                    out.append("")
+                                    continue
+
+                                try:
+                                    s = data.decode("utf-8")
+                                except UnicodeDecodeError:
+                                    s = data.decode("latin-1", errors="replace")
+
+                                total += len(s.encode("utf-8", errors="ignore"))
+
+                                out.append(f"--- {i.filename} ---")
+                                out.append(s)
+                                out.append("")
+
+                        return "\n".join(out).strip()
+
+                    content_type = (file.meta or {}).get("content_type") or ""
+                    if content_type in ("application/zip", "application/x-zip-compressed") or file.filename.lower().endswith(".zip"):
+                        if not file_path:
+                            raise ValueError("Zip has no local file path to read")
+
+                        text_content = _zip_to_text(str(file_path))
+                        docs = [Document(
+                            page_content=text_content,
+                            metadata={"file_id": str(file.id), "name": file.filename, "created_by": str(file.user_id)},
+                        )]
+
+                        Files.update_file_data_by_id(file.id, {"content": text_content}, db=db)
+                        file_hash = calculate_sha256_string(text_content)
+
+                        if request.app.state.config.BYPASS_EMBEDDING_AND_RETRIEVAL:
+                            Files.update_file_data_by_id(file.id, {"status": "completed"}, db=db)
+                            Files.update_file_hash_by_id(file.id, file_hash, db=db)
+                            return {"status": True, "collection_name": None, "filename": file.filename, "content": text_content}
+
+                        db.commit()
+                        result = save_docs_to_vector_db(request, docs, collection_name, user=user)
+                        if result:
+                            with get_db() as session:
+                                Files.update_file_metadata_by_id(file.id, {"collection_name": collection_name}, db=session)
+                                Files.update_file_data_by_id(file.id, {"status": "completed"}, db=session)
+                                Files.update_file_hash_by_id(file.id, file_hash, db=session)
+                            return {"status": True, "collection_name": collection_name, "filename": file.filename, "content": text_content}
+
+                        raise Exception("Error saving ZIP document to vector database")
+                    # --- END PATCH
+
                     loader = Loader(
                         engine=request.app.state.config.CONTENT_EXTRACTION_ENGINE,
                         user=user,

@@ -446,6 +446,7 @@
 			name: file.name,
 			collection_name: '',
 			status: 'uploading',
+							progress: 0,
 			size: file.size,
 			error: '',
 			itemId: tempItemId
@@ -472,7 +473,10 @@
 					: {})
 			};
 
-			const uploadedFile = await uploadFile(localStorage.token, file, metadata, process);
+			const uploadedFile = await uploadFile(localStorage.token, file, metadata, process, (pct) => {
+							fileItem.progress = pct;
+							files = files; // trigger Svelte reactivity
+					});
 
 			if (uploadedFile) {
 				console.info('File upload completed:', {
